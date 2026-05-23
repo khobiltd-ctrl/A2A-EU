@@ -1,0 +1,1060 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Amazon EU Arbitrage Finder</title>
+  <style>
+    :root {
+      --bg: #0d0f1a;
+      --surface: #161927;
+      --surface2: #1e2235;
+      --border: #2a2f4a;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --primary: #6366f1;
+      --primary-d: #4f46e5;
+      --success: #10b981;
+      --warn: #f59e0b;
+      --danger: #ef4444;
+      --amazon: #ff9900;
+      --radius: 10px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 20px;
+      line-height: 1.5;
+    }
+
+    /* ── Layout ── */
+    .container { max-width: 1100px; margin: 0 auto; }
+    header { text-align: center; padding: 32px 0 24px; }
+    header h1 { font-size: 2rem; font-weight: 700; }
+    header h1 span { color: var(--amazon); }
+    header p { color: var(--muted); margin-top: 6px; font-size: .95rem; }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+    .card-title {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 18px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text);
+    }
+    .step-badge {
+      background: var(--primary);
+      color: #fff;
+      border-radius: 50%;
+      width: 22px; height: 22px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: .72rem; font-weight: 700; flex-shrink: 0;
+    }
+
+    /* ── Form controls ── */
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+    @media(max-width:640px){ .grid-2,.grid-3{ grid-template-columns:1fr; } }
+
+    label { display: block; font-size: .8rem; color: var(--muted); margin-bottom: 5px; font-weight: 500; }
+    input[type=text], input[type=number], input[type=password] {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      padding: 9px 12px;
+      font-size: .9rem;
+      outline: none;
+      transition: border-color .15s;
+    }
+    input:focus { border-color: var(--primary); }
+    .hint { font-size: .75rem; color: var(--muted); margin-top: 4px; }
+    .hint a { color: var(--primary); text-decoration: none; }
+    .hint a:hover { text-decoration: underline; }
+
+    /* ── Drop zone ── */
+    #dropZone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 36px;
+      text-align: center;
+      cursor: pointer;
+      transition: all .2s;
+      position: relative;
+    }
+    #dropZone:hover, #dropZone.drag-over {
+      border-color: var(--primary);
+      background: rgba(99,102,241,.05);
+    }
+    #dropZone input[type=file] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+    }
+    #dropZone .dz-icon { font-size: 2.5rem; margin-bottom: 10px; }
+    #dropZone .dz-text { color: var(--muted); font-size: .9rem; }
+    #dropZone .dz-text strong { color: var(--text); }
+
+    /* ── CSV preview ── */
+    #csvPreview { display: none; }
+    .preview-table-wrap { overflow-x: auto; margin-top: 14px; border-radius: 6px; border: 1px solid var(--border); }
+    table { width: 100%; border-collapse: collapse; font-size: .83rem; }
+    thead th {
+      background: var(--surface2);
+      color: var(--muted);
+      padding: 8px 12px;
+      text-align: left;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    tbody tr:nth-child(even) { background: rgba(255,255,255,.02); }
+    tbody td { padding: 7px 12px; border-top: 1px solid var(--border); }
+    .mono { font-family: 'SF Mono', 'Fira Code', monospace; }
+
+    /* ── Marketplace toggles ── */
+    .market-grid { display: flex; gap: 12px; flex-wrap: wrap; }
+    .market-btn {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 18px;
+      border-radius: 8px;
+      border: 2px solid var(--border);
+      background: var(--surface2);
+      color: var(--text);
+      cursor: pointer;
+      transition: all .15s;
+      font-size: .9rem;
+      font-weight: 500;
+      user-select: none;
+    }
+    .market-btn:hover { border-color: var(--primary); }
+    .market-btn.active { border-color: var(--primary); background: rgba(99,102,241,.15); }
+    .market-btn .flag { font-size: 1.4rem; }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 10px 22px;
+      border-radius: 7px;
+      border: none;
+      font-size: .9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all .15s;
+    }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: var(--primary-d); }
+    .btn-primary:disabled { opacity: .45; cursor: not-allowed; }
+    .btn-success { background: var(--success); color: #fff; }
+    .btn-success:hover { filter: brightness(1.1); }
+    .btn-outline {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+    .btn-outline:hover { border-color: var(--primary); color: var(--text); }
+
+    /* ── Progress ── */
+    #progressSection { display: none; }
+    .progress-bar-wrap {
+      background: var(--surface2);
+      border-radius: 99px;
+      height: 8px;
+      overflow: hidden;
+      margin: 14px 0;
+    }
+    .progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, var(--primary), #818cf8);
+      border-radius: 99px;
+      transition: width .3s;
+      width: 0%;
+    }
+    #progressLabel { font-size: .85rem; color: var(--muted); }
+    #progressStatus { font-size: .82rem; color: var(--muted); margin-top: 6px; }
+
+    /* ── Summary badges ── */
+    .summary-row { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; }
+    .badge {
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: .82rem;
+      font-weight: 600;
+    }
+    .badge-neutral { background: var(--surface2); border: 1px solid var(--border); }
+    .badge-success { background: rgba(16,185,129,.15); border: 1px solid rgba(16,185,129,.3); color: #34d399; }
+    .badge-warn { background: rgba(245,158,11,.12); border: 1px solid rgba(245,158,11,.3); color: #fbbf24; }
+
+    /* ── Results table ── */
+    #resultsSection { display: none; }
+    .results-controls {
+      display: flex; align-items: center; gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+    .toggle-row { display: flex; align-items: center; gap: 8px; font-size: .85rem; color: var(--muted); }
+    .toggle {
+      width: 38px; height: 20px;
+      background: var(--surface2);
+      border-radius: 99px;
+      border: 1px solid var(--border);
+      cursor: pointer;
+      position: relative;
+      transition: background .2s;
+      flex-shrink: 0;
+    }
+    .toggle.on { background: var(--success); border-color: var(--success); }
+    .toggle::after {
+      content: '';
+      position: absolute;
+      top: 2px; left: 2px;
+      width: 14px; height: 14px;
+      background: #fff;
+      border-radius: 50%;
+      transition: left .2s;
+    }
+    .toggle.on::after { left: 20px; }
+
+    .roi-good { color: #34d399; font-weight: 700; }
+    .roi-warn { color: #fbbf24; font-weight: 700; }
+    .roi-bad  { color: #f87171; font-weight: 700; }
+    .profit-good { color: #34d399; }
+    .profit-bad  { color: #f87171; }
+
+    .market-tag {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 2px 8px;
+      background: var(--surface2);
+      border-radius: 4px;
+      font-size: .78rem;
+    }
+    .amz-link {
+      color: var(--amazon);
+      text-decoration: none;
+      font-size: .78rem;
+    }
+    .amz-link:hover { text-decoration: underline; }
+
+    .no-data { text-align: center; color: var(--muted); padding: 32px; font-size: .9rem; }
+    .pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 99px;
+      font-size: .73rem;
+      font-weight: 600;
+    }
+    .pill-success { background: rgba(16,185,129,.2); color: #34d399; }
+    .pill-danger  { background: rgba(239,68,68,.15); color: #f87171; }
+
+    /* ── Error / info banners ── */
+    .banner {
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-size: .85rem;
+      margin-top: 14px;
+      display: none;
+    }
+    .banner-warn { background: rgba(245,158,11,.1); border: 1px solid rgba(245,158,11,.3); color: #fbbf24; }
+    .banner-err  { background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.3); color: #f87171; }
+    .banner-info { background: rgba(99,102,241,.1); border: 1px solid rgba(99,102,241,.3); color: #a5b4fc; }
+
+    .row-actions { display: flex; gap: 8px; align-items: center; }
+    .sortable { cursor: pointer; user-select: none; }
+    .sortable:hover { color: var(--text); }
+    .sort-icon { font-size: .7rem; }
+
+    /* ── Spinner ── */
+    .spinner {
+      width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,.2);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .6s linear infinite;
+      display: inline-block;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #stopBtn { display: none; }
+
+    .col-map-row { display: flex; gap: 10px; align-items: flex-start; flex-wrap: wrap; margin-top: 12px; }
+    .col-map-group { flex: 1; min-width: 140px; }
+
+    select {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      padding: 9px 12px;
+      font-size: .9rem;
+      outline: none;
+      cursor: pointer;
+    }
+    select:focus { border-color: var(--primary); }
+
+    .tag-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+    .tag { padding: 2px 8px; border-radius: 4px; font-size: .75rem; background: var(--surface2); border: 1px solid var(--border); color: var(--muted); }
+
+    #exportBtn { display: none; }
+    #clearBtn  { display: none; }
+
+    /* scroll table */
+    .results-table-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid var(--border); }
+
+    /* truncate long text */
+    .trunc { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    footer { text-align: center; color: var(--muted); font-size: .78rem; margin-top: 32px; padding-bottom: 16px; }
+    footer a { color: var(--primary); text-decoration: none; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <h1>Amazon EU <span>Arbitrage</span> Finder</h1>
+    <p>Upload your product list &mdash; find profitable opportunities across Amazon DE, FR, ES &amp; IT</p>
+  </header>
+
+  <!-- ── Step 1: Config ── -->
+  <div class="card">
+    <div class="card-title"><span class="step-badge">1</span> Configuration</div>
+    <div class="grid-2" style="margin-bottom:14px;">
+      <div>
+        <label>Keepa API Key <span style="color:var(--danger)">*</span></label>
+        <input type="password" id="apiKey" placeholder="Paste your Keepa API key…" />
+        <p class="hint">Get a free key at <a href="https://keepa.com/#!api" target="_blank">keepa.com/#!api</a> &mdash; free tier gives 100 tokens/minute</p>
+      </div>
+      <div>
+        <label>EUR → GBP Exchange Rate</label>
+        <input type="number" id="eurGbp" value="0.855" step="0.001" min="0.5" max="2" />
+        <p class="hint">
+          <span id="rateStatus">Fetching live rate…</span>
+        </p>
+      </div>
+    </div>
+    <div class="grid-3">
+      <div>
+        <label>Minimum ROI %</label>
+        <input type="number" id="minRoi" value="30" min="1" max="500" />
+        <p class="hint">e.g. 30 = 30% return on cost</p>
+      </div>
+      <div>
+        <label>Minimum Profit (£)</label>
+        <input type="number" id="minProfit" value="1" min="0" step="0.01" />
+        <p class="hint">Minimum gross profit per unit</p>
+      </div>
+      <div>
+        <label>Amazon Fee % (optional)</label>
+        <input type="number" id="feesPct" value="0" min="0" max="50" step="0.5" />
+        <p class="hint">Deducted from Amazon price (referral + FBA)</p>
+      </div>
+    </div>
+    <div class="banner banner-info" id="feesBanner">
+      Amazon fees are set to <strong id="feesVal">0%</strong>. Net profit = Amazon price × (1 − fee%) − your cost.
+    </div>
+  </div>
+
+  <!-- ── Step 2: CSV Upload ── -->
+  <div class="card">
+    <div class="card-title"><span class="step-badge">2</span> Upload Product CSV</div>
+    <div id="dropZone">
+      <input type="file" id="fileInput" accept=".csv,.txt" />
+      <div class="dz-icon">📂</div>
+      <div class="dz-text"><strong>Click or drag &amp; drop</strong> your CSV file here</div>
+      <div class="dz-text" style="margin-top:6px;font-size:.78rem;">Expected columns: <code>ASIN</code>, <code>Name</code>, <code>Price</code> (your cost in £)</div>
+    </div>
+
+    <!-- Column mapper (shown after upload) -->
+    <div id="csvPreview">
+      <div style="margin-top:16px;">
+        <div style="font-size:.85rem;color:var(--muted);margin-bottom:8px;">Map your CSV columns:</div>
+        <div class="col-map-row">
+          <div class="col-map-group">
+            <label>ASIN column</label>
+            <select id="colAsin"></select>
+          </div>
+          <div class="col-map-group">
+            <label>Product Name column</label>
+            <select id="colName"></select>
+          </div>
+          <div class="col-map-group">
+            <label>Your Cost Price column</label>
+            <select id="colPrice"></select>
+          </div>
+        </div>
+      </div>
+      <div class="preview-table-wrap">
+        <table id="previewTable">
+          <thead><tr id="previewHead"></tr></thead>
+          <tbody id="previewBody"></tbody>
+        </table>
+      </div>
+      <div style="margin-top:10px;font-size:.82rem;color:var(--muted);" id="csvStats"></div>
+    </div>
+
+    <div class="banner banner-warn" id="csvWarn"></div>
+    <div class="banner banner-err" id="csvErr"></div>
+  </div>
+
+  <!-- ── Step 3: Marketplaces ── -->
+  <div class="card">
+    <div class="card-title"><span class="step-badge">3</span> Select Amazon EU Marketplaces</div>
+    <div class="market-grid" id="marketGrid">
+      <div class="market-btn active" data-market="DE">
+        <span class="flag">🇩🇪</span> Germany (amazon.de)
+      </div>
+      <div class="market-btn active" data-market="FR">
+        <span class="flag">🇫🇷</span> France (amazon.fr)
+      </div>
+      <div class="market-btn active" data-market="ES">
+        <span class="flag">🇪🇸</span> Spain (amazon.es)
+      </div>
+      <div class="market-btn active" data-market="IT">
+        <span class="flag">🇮🇹</span> Italy (amazon.it)
+      </div>
+    </div>
+    <p class="hint" style="margin-top:12px;">Click to toggle marketplaces. At least one must be selected.</p>
+  </div>
+
+  <!-- ── Step 4: Scan ── -->
+  <div class="card">
+    <div class="card-title"><span class="step-badge">4</span> Run Scan</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      <button class="btn btn-primary" id="scanBtn" disabled>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        Start Scanning
+      </button>
+      <button class="btn btn-outline" id="stopBtn">⏹ Stop</button>
+      <button class="btn btn-outline" id="clearBtn">🗑 Clear Results</button>
+    </div>
+
+    <div id="progressSection">
+      <div class="progress-bar-wrap"><div class="progress-bar" id="progressBar"></div></div>
+      <div id="progressLabel"></div>
+      <div id="progressStatus"></div>
+      <div class="banner banner-warn" id="tokenWarn" style="margin-top:10px;"></div>
+    </div>
+
+    <div class="banner banner-err" id="scanErr"></div>
+  </div>
+
+  <!-- ── Step 5: Results ── -->
+  <div class="card" id="resultsSection">
+    <div class="card-title" style="justify-content:space-between;flex-wrap:wrap;gap:10px;">
+      <span><span class="step-badge" style="display:inline-flex;background:#10b981;">5</span> Results</span>
+      <button class="btn btn-success" id="exportBtn" style="font-size:.8rem;padding:7px 14px;">
+        ⬇ Export CSV
+      </button>
+    </div>
+
+    <div class="summary-row" id="summaryRow"></div>
+
+    <div class="results-controls">
+      <div class="toggle-row">
+        <div class="toggle on" id="filterToggle"></div>
+        <span id="filterLabel">Show profitable only</span>
+      </div>
+      <div style="flex:1;"></div>
+      <div style="font-size:.8rem;color:var(--muted);">Sort by:
+        <select id="sortSelect" style="width:auto;display:inline-block;padding:4px 8px;font-size:.8rem;margin-left:6px;">
+          <option value="roi-desc">ROI ↓</option>
+          <option value="profit-desc">Profit ↓</option>
+          <option value="asin">ASIN</option>
+          <option value="name">Name</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="results-table-wrap">
+      <table id="resultsTable">
+        <thead>
+          <tr>
+            <th>ASIN</th>
+            <th>Name</th>
+            <th>Your Cost</th>
+            <th>Amazon Price (local)</th>
+            <th>Amazon Price (£)</th>
+            <th>Net Profit (£)</th>
+            <th>ROI %</th>
+            <th>Market</th>
+            <th>Status</th>
+            <th>Link</th>
+          </tr>
+        </thead>
+        <tbody id="resultsBody"></tbody>
+      </table>
+    </div>
+    <div class="no-data" id="noData" style="display:none;">No results match current filter.</div>
+  </div>
+
+</div>
+
+<footer>
+  Amazon EU Arbitrage Finder &mdash; powered by <a href="https://keepa.com" target="_blank">Keepa API</a>.
+  Prices are informational only; always verify before purchasing.
+</footer>
+
+<script>
+// ─── Marketplace config ───────────────────────────────────────────────────────
+const MARKETS = {
+  DE: { id: 3, name: 'Germany', domain: 'amazon.de', flag: '🇩🇪', currency: 'EUR' },
+  FR: { id: 4, name: 'France',  domain: 'amazon.fr', flag: '🇫🇷', currency: 'EUR' },
+  ES: { id: 8, name: 'Spain',   domain: 'amazon.es', flag: '🇪🇸', currency: 'EUR' },
+  IT: { id: 9, name: 'Italy',   domain: 'amazon.it', flag: '🇮🇹', currency: 'EUR' },
+};
+
+// ─── State ────────────────────────────────────────────────────────────────────
+let csvRows      = [];      // parsed CSV (array of objects)
+let csvHeaders   = [];      // original CSV headers
+let results      = [];      // scan results
+let scanning     = false;
+let stopRequested= false;
+let activeMarkets= new Set(['DE','FR','ES','IT']);
+let showProfitableOnly = true;
+let sortMode     = 'roi-desc';
+
+// ─── DOM refs ─────────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+
+const apiKeyEl    = $('apiKey');
+const eurGbpEl    = $('eurGbp');
+const minRoiEl    = $('minRoi');
+const minProfitEl = $('minProfit');
+const feesPctEl   = $('feesPct');
+const dropZone    = $('dropZone');
+const fileInput   = $('fileInput');
+const csvPreview  = $('csvPreview');
+const scanBtn     = $('scanBtn');
+const stopBtn     = $('stopBtn');
+const clearBtn    = $('clearBtn');
+const progressBar = $('progressBar');
+const filterToggle= $('filterToggle');
+
+// ─── Live EUR/GBP rate ───────────────────────────────────────────────────────
+async function fetchExchangeRate() {
+  try {
+    const r = await fetch('https://api.exchangerate-api.com/v4/latest/EUR');
+    if (!r.ok) throw new Error();
+    const d = await r.json();
+    const gbp = d.rates?.GBP;
+    if (gbp) {
+      eurGbpEl.value = gbp.toFixed(4);
+      $('rateStatus').textContent = `Live rate: 1 EUR = ${gbp.toFixed(4)} GBP`;
+    }
+  } catch {
+    $('rateStatus').textContent = 'Could not fetch live rate — using default.';
+  }
+}
+fetchExchangeRate();
+
+// ─── Marketplace toggles ─────────────────────────────────────────────────────
+document.querySelectorAll('.market-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const m = btn.dataset.market;
+    if (activeMarkets.has(m)) {
+      if (activeMarkets.size === 1) return; // keep at least one
+      activeMarkets.delete(m);
+      btn.classList.remove('active');
+    } else {
+      activeMarkets.add(m);
+      btn.classList.add('active');
+    }
+  });
+});
+
+// ─── Fees banner ─────────────────────────────────────────────────────────────
+feesPctEl.addEventListener('input', () => {
+  const v = parseFloat(feesPctEl.value) || 0;
+  const banner = $('feesBanner');
+  $('feesVal').textContent = v + '%';
+  banner.style.display = v > 0 ? 'block' : 'none';
+});
+
+// ─── CSV parsing ─────────────────────────────────────────────────────────────
+function parseCSV(text) {
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length < 2) return { headers: [], rows: [] };
+
+  const detectDelimiter = line => {
+    const counts = { ',': 0, ';': 0, '\t': 0, '|': 0 };
+    let inQuote = false;
+    for (const ch of line) {
+      if (ch === '"') { inQuote = !inQuote; continue; }
+      if (!inQuote && counts[ch] !== undefined) counts[ch]++;
+    }
+    return Object.entries(counts).sort((a,b) => b[1]-a[1])[0][0];
+  };
+
+  const delim = detectDelimiter(lines[0]);
+
+  const splitLine = line => {
+    const cols = [];
+    let cur = '', inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        if (inQ && line[i+1] === '"') { cur += '"'; i++; }
+        else inQ = !inQ;
+      } else if (ch === delim && !inQ) {
+        cols.push(cur.trim()); cur = '';
+      } else {
+        cur += ch;
+      }
+    }
+    cols.push(cur.trim());
+    return cols;
+  };
+
+  const headers = splitLine(lines[0]).map(h => h.replace(/^"|"$/g,'').trim());
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    if (!lines[i].trim()) continue;
+    const vals = splitLine(lines[i]);
+    const obj = {};
+    headers.forEach((h, idx) => { obj[h] = (vals[idx] || '').replace(/^"|"$/g,'').trim(); });
+    rows.push(obj);
+  }
+  return { headers, rows };
+}
+
+function autoDetectColumns(headers) {
+  const lower = headers.map(h => h.toLowerCase());
+  const find = keywords => {
+    for (const kw of keywords) {
+      const idx = lower.findIndex(h => h.includes(kw));
+      if (idx !== -1) return headers[idx];
+    }
+    return headers[0];
+  };
+  return {
+    asin:  find(['asin']),
+    name:  find(['name','title','product','description','item']),
+    price: find(['price','cost','buy','gbp','£','rrp','our price']),
+  };
+}
+
+function populateColumnSelects(headers) {
+  const selects = ['colAsin','colName','colPrice'];
+  selects.forEach(id => {
+    const el = $(id);
+    el.innerHTML = '';
+    headers.forEach(h => {
+      const opt = document.createElement('option');
+      opt.value = h;
+      opt.textContent = h;
+      el.appendChild(opt);
+    });
+  });
+  const auto = autoDetectColumns(headers);
+  $('colAsin').value  = auto.asin;
+  $('colName').value  = auto.name;
+  $('colPrice').value = auto.price;
+}
+
+function renderPreview() {
+  const thead = $('previewHead');
+  const tbody = $('previewBody');
+  thead.innerHTML = '';
+  tbody.innerHTML = '';
+
+  csvHeaders.forEach(h => {
+    const th = document.createElement('th');
+    th.textContent = h;
+    thead.appendChild(th);
+  });
+
+  const preview = csvRows.slice(0, 5);
+  preview.forEach(row => {
+    const tr = document.createElement('tr');
+    csvHeaders.forEach(h => {
+      const td = document.createElement('td');
+      td.textContent = row[h] || '';
+      if (h.toLowerCase().includes('asin')) td.classList.add('mono');
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+
+  $('csvStats').textContent = `${csvRows.length} product${csvRows.length !== 1 ? 's' : ''} loaded (showing first 5)`;
+  csvPreview.style.display = 'block';
+  updateScanBtn();
+}
+
+function handleFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const { headers, rows } = parseCSV(e.target.result);
+      if (!headers.length || !rows.length) {
+        showBanner('csvErr', 'Could not parse CSV. Make sure the file has headers and at least one data row.');
+        return;
+      }
+      hideBanner('csvErr');
+      csvHeaders = headers;
+      csvRows    = rows;
+      populateColumnSelects(headers);
+      renderPreview();
+    } catch(err) {
+      showBanner('csvErr', 'Error reading file: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
+// Drag & drop
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', ()=> dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', () => handleFile(fileInput.files[0]));
+
+['colAsin','colName','colPrice'].forEach(id => {
+  $(id) && $(id).addEventListener('change', updateScanBtn);
+});
+
+function updateScanBtn() {
+  scanBtn.disabled = !(csvRows.length > 0 && apiKeyEl.value.trim());
+}
+apiKeyEl.addEventListener('input', updateScanBtn);
+
+// ─── Keepa API call ──────────────────────────────────────────────────────────
+async function keepaFetch(asin, domainId, apiKey) {
+  const url = `https://api.keepa.com/product?key=${encodeURIComponent(apiKey)}&domain=${domainId}&asin=${encodeURIComponent(asin)}&stats=1&history=0&offers=20`;
+  const resp = await fetch(url);
+  if (resp.status === 400) throw new Error('BAD_REQUEST');
+  if (resp.status === 402) throw new Error('TOKEN_LIMIT');
+  if (resp.status === 403) throw new Error('INVALID_KEY');
+  if (!resp.ok) throw new Error(`HTTP_${resp.status}`);
+  return resp.json();
+}
+
+function extractLowestNewPrice(product) {
+  // Check stats.current: index 0 = Amazon, 1 = marketplace new
+  if (!product?.stats?.current) return null;
+  const cur = product.stats.current;
+  const candidates = [cur[0], cur[1]].filter(v => v && v > 0);
+  if (!candidates.length) return null;
+  return Math.min(...candidates) / 100; // Keepa prices are in cents
+}
+
+// ─── Scanning ────────────────────────────────────────────────────────────────
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function runScan() {
+  const apiKey  = apiKeyEl.value.trim();
+  const eurGbp  = parseFloat(eurGbpEl.value) || 0.855;
+  const minRoi  = parseFloat(minRoiEl.value) || 30;
+  const minPro  = parseFloat(minProfitEl.value) || 1;
+  const feesPct = (parseFloat(feesPctEl.value) || 0) / 100;
+
+  const colAsin  = $('colAsin').value;
+  const colName  = $('colName').value;
+  const colPrice = $('colPrice').value;
+
+  if (!apiKey) { showBanner('scanErr','Please enter your Keepa API key.'); return; }
+  if (!csvRows.length) { showBanner('scanErr','No CSV data loaded.'); return; }
+  if (!activeMarkets.size) { showBanner('scanErr','Select at least one marketplace.'); return; }
+
+  hideBanner('scanErr');
+  scanning     = true;
+  stopRequested= false;
+  results      = [];
+
+  scanBtn.disabled = true;
+  stopBtn.style.display = 'inline-flex';
+  clearBtn.style.display = 'none';
+  $('progressSection').style.display = 'block';
+  $('resultsSection').style.display  = 'none';
+  $('exportBtn').style.display       = 'none';
+
+  const markets = [...activeMarkets];
+  const total   = csvRows.length * markets.length;
+  let   done    = 0;
+  let   tokensLeft = null;
+
+  for (const row of csvRows) {
+    if (stopRequested) break;
+
+    const asin      = (row[colAsin]  || '').trim().toUpperCase();
+    const name      = (row[colName]  || '').trim() || asin;
+    const costRaw   = (row[colPrice] || '').replace(/[£$€,\s]/g,'');
+    const costGBP   = parseFloat(costRaw);
+
+    if (!asin.match(/^[A-Z0-9]{10}$/)) {
+      markets.forEach(() => {
+        done++;
+        updateProgress(done, total, `Skipping invalid ASIN: ${asin}`);
+        results.push({ asin, name, costGBP, market: '—', amazonEUR: null, amazonGBP: null, netProfit: null, roi: null, error: 'Invalid ASIN' });
+      });
+      continue;
+    }
+
+    if (isNaN(costGBP) || costGBP <= 0) {
+      markets.forEach(() => {
+        done++;
+        updateProgress(done, total, `Skipping — invalid cost price for ${asin}`);
+        results.push({ asin, name, costGBP: null, market: '—', amazonEUR: null, amazonGBP: null, netProfit: null, roi: null, error: 'Invalid cost price' });
+      });
+      continue;
+    }
+
+    for (const mCode of markets) {
+      if (stopRequested) break;
+      const mInfo = MARKETS[mCode];
+      updateProgress(done, total, `Checking ${asin} on ${mInfo.name}…`);
+
+      let entry = { asin, name, costGBP, market: mCode, amazonEUR: null, amazonGBP: null, netProfit: null, roi: null, error: null };
+
+      try {
+        const data = await keepaFetch(asin, mInfo.id, apiKey);
+
+        if (data.tokensLeft !== undefined) {
+          tokensLeft = data.tokensLeft;
+          if (tokensLeft < 5) {
+            showBanner('tokenWarn', `⚠ Only ${tokensLeft} Keepa tokens remaining. Scan paused 60s to refill.`);
+            await sleep(60000);
+            hideBanner('tokenWarn');
+          }
+        }
+
+        if (!data.products?.length) {
+          entry.error = 'Not found';
+        } else {
+          const priceEUR = extractLowestNewPrice(data.products[0]);
+          if (priceEUR === null || priceEUR <= 0) {
+            entry.error = 'No price available';
+          } else {
+            entry.amazonEUR = priceEUR;
+            // Convert to GBP
+            const priceGBP = priceEUR * eurGbp;
+            // Apply Amazon fees
+            const netSell  = priceGBP * (1 - feesPct);
+            const profit   = netSell - costGBP;
+            const roi      = costGBP > 0 ? (profit / costGBP) * 100 : 0;
+            entry.amazonGBP  = priceGBP;
+            entry.netProfit  = profit;
+            entry.roi        = roi;
+          }
+        }
+      } catch(err) {
+        if (err.message === 'INVALID_KEY') {
+          showBanner('scanErr', '❌ Invalid Keepa API key. Please check and try again.');
+          stopRequested = true;
+          break;
+        }
+        if (err.message === 'TOKEN_LIMIT') {
+          showBanner('tokenWarn', '⚠ Token limit reached. Waiting 60s…');
+          await sleep(60000);
+          hideBanner('tokenWarn');
+          // Retry once
+          try {
+            const data2 = await keepaFetch(asin, mInfo.id, apiKey);
+            const priceEUR = data2.products?.length ? extractLowestNewPrice(data2.products[0]) : null;
+            if (priceEUR) {
+              const priceGBP = priceEUR * eurGbp;
+              const netSell  = priceGBP * (1 - feesPct);
+              const profit   = netSell - costGBP;
+              const roi      = costGBP > 0 ? (profit / costGBP) * 100 : 0;
+              entry.amazonEUR = priceEUR; entry.amazonGBP = priceGBP;
+              entry.netProfit = profit;   entry.roi = roi;
+            } else { entry.error = 'No price after retry'; }
+          } catch { entry.error = 'Token limit — skipped'; }
+        } else {
+          entry.error = err.message;
+        }
+      }
+
+      results.push(entry);
+      done++;
+      updateProgress(done, total, tokensLeft !== null ? `Keepa tokens left: ${tokensLeft}` : '');
+
+      // Polite delay to avoid hammering the API
+      await sleep(300);
+    }
+  }
+
+  // Done
+  scanning = false;
+  scanBtn.disabled = false;
+  stopBtn.style.display = 'none';
+  clearBtn.style.display = 'inline-flex';
+  $('progressLabel').textContent = stopRequested ? '⏹ Scan stopped.' : '✅ Scan complete!';
+  $('progressStatus').textContent = `${done} checks completed.`;
+
+  renderResults();
+}
+
+function updateProgress(done, total, status) {
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  progressBar.style.width = pct + '%';
+  $('progressLabel').textContent = `${done} / ${total} (${pct}%)`;
+  if (status) $('progressStatus').textContent = status;
+}
+
+// ─── Results rendering ───────────────────────────────────────────────────────
+function isProfitable(r) {
+  const minRoi = parseFloat(minRoiEl.value) || 30;
+  const minPro = parseFloat(minProfitEl.value) || 1;
+  return r.roi !== null && r.roi >= minRoi && r.netProfit >= minPro;
+}
+
+function sortedResults() {
+  const rs = [...results];
+  switch(sortMode) {
+    case 'roi-desc':    rs.sort((a,b) => (b.roi??-Infinity) - (a.roi??-Infinity)); break;
+    case 'profit-desc': rs.sort((a,b) => (b.netProfit??-Infinity) - (a.netProfit??-Infinity)); break;
+    case 'asin':        rs.sort((a,b) => a.asin.localeCompare(b.asin)); break;
+    case 'name':        rs.sort((a,b) => a.name.localeCompare(b.name)); break;
+  }
+  return rs;
+}
+
+function renderResults() {
+  const minRoi   = parseFloat(minRoiEl.value) || 30;
+  const minPro   = parseFloat(minProfitEl.value) || 1;
+  const profitable = results.filter(isProfitable);
+  const noPrice    = results.filter(r => r.error && r.error !== 'Invalid ASIN' && r.error !== 'Invalid cost price');
+
+  // Summary
+  $('summaryRow').innerHTML = `
+    <div class="badge badge-neutral">🔍 ${results.length} total checks</div>
+    <div class="badge badge-success">✅ ${profitable.length} profitable opportunities</div>
+    <div class="badge badge-warn">⚠ ${noPrice.length} not found / no price</div>
+  `;
+
+  const rs = sortedResults();
+  const filtered = showProfitableOnly ? rs.filter(isProfitable) : rs;
+
+  const tbody = $('resultsBody');
+  tbody.innerHTML = '';
+
+  if (!filtered.length) {
+    $('noData').style.display = 'block';
+  } else {
+    $('noData').style.display = 'none';
+  }
+
+  filtered.forEach(r => {
+    const mInfo   = MARKETS[r.market] || {};
+    const domain  = mInfo.domain || '';
+    const amzUrl  = domain ? `https://www.${domain}/dp/${r.asin}` : '#';
+
+    const roiClass = r.roi === null ? '' : r.roi >= minRoi ? 'roi-good' : r.roi >= minRoi * 0.7 ? 'roi-warn' : 'roi-bad';
+    const proClass = r.netProfit === null ? '' : r.netProfit >= minPro ? 'profit-good' : 'profit-bad';
+
+    const profitableRow = isProfitable(r);
+    const statusPill = r.error
+      ? `<span class="pill pill-danger">${r.error}</span>`
+      : profitableRow
+        ? `<span class="pill pill-success">✓ Opportunity</span>`
+        : `<span class="pill pill-danger">Below target</span>`;
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="mono" style="font-size:.78rem;">${r.asin}</td>
+      <td><div class="trunc" title="${escHtml(r.name)}">${escHtml(r.name)}</div></td>
+      <td>${r.costGBP != null ? '£' + r.costGBP.toFixed(2) : '—'}</td>
+      <td>${r.amazonEUR != null ? '€' + r.amazonEUR.toFixed(2) : r.error || '—'}</td>
+      <td>${r.amazonGBP != null ? '£' + r.amazonGBP.toFixed(2) : '—'}</td>
+      <td class="${proClass}">${r.netProfit != null ? (r.netProfit >= 0 ? '+' : '') + '£' + r.netProfit.toFixed(2) : '—'}</td>
+      <td class="${roiClass}">${r.roi != null ? r.roi.toFixed(1) + '%' : '—'}</td>
+      <td>${mInfo.flag ? `<span class="market-tag">${mInfo.flag} ${r.market}</span>` : r.market}</td>
+      <td>${statusPill}</td>
+      <td>${domain ? `<a class="amz-link" href="${amzUrl}" target="_blank">View ↗</a>` : '—'}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  $('resultsSection').style.display = 'block';
+  $('exportBtn').style.display      = 'inline-flex';
+}
+
+function escHtml(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ─── Filter toggle ────────────────────────────────────────────────────────────
+filterToggle.addEventListener('click', () => {
+  showProfitableOnly = !showProfitableOnly;
+  filterToggle.classList.toggle('on', showProfitableOnly);
+  $('filterLabel').textContent = showProfitableOnly ? 'Show profitable only' : 'Show all results';
+  if (results.length) renderResults();
+});
+
+$('sortSelect').addEventListener('change', e => {
+  sortMode = e.target.value;
+  if (results.length) renderResults();
+});
+
+// ─── Export CSV ───────────────────────────────────────────────────────────────
+$('exportBtn').addEventListener('click', () => {
+  const feesPct = (parseFloat(feesPctEl.value) || 0) / 100;
+  const rows = [
+    ['ASIN','Name','Your Cost (£)','Amazon Price (EUR)','Amazon Price (£)','Net Profit (£)','ROI %','Marketplace','Status','Amazon Link']
+  ];
+  sortedResults().forEach(r => {
+    const mInfo = MARKETS[r.market] || {};
+    const domain = mInfo.domain || '';
+    rows.push([
+      r.asin,
+      r.name,
+      r.costGBP != null ? r.costGBP.toFixed(2) : '',
+      r.amazonEUR != null ? r.amazonEUR.toFixed(2) : r.error || '',
+      r.amazonGBP != null ? r.amazonGBP.toFixed(2) : '',
+      r.netProfit != null ? r.netProfit.toFixed(2) : '',
+      r.roi != null ? r.roi.toFixed(1) : '',
+      r.market,
+      r.error ? r.error : isProfitable(r) ? 'Opportunity' : 'Below target',
+      domain ? `https://www.${domain}/dp/${r.asin}` : ''
+    ]);
+  });
+
+  const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `arbitrage-results-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+// ─── Buttons ──────────────────────────────────────────────────────────────────
+scanBtn.addEventListener('click', runScan);
+stopBtn.addEventListener('click', () => { stopRequested = true; stopBtn.textContent = 'Stopping…'; });
+clearBtn.addEventListener('click', () => {
+  results = [];
+  $('resultsSection').style.display = 'none';
+  $('progressSection').style.display = 'none';
+  $('exportBtn').style.display = 'none';
+  clearBtn.style.display = 'none';
+});
+
+// ─── Banner helpers ───────────────────────────────────────────────────────────
+function showBanner(id, msg) {
+  const el = $(id);
+  if (!el) return;
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+function hideBanner(id) {
+  const el = $(id);
+  if (el) el.style.display = 'none';
+}
+</script>
+</body>
+</html>
