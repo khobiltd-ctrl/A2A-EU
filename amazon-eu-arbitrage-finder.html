@@ -330,9 +330,9 @@
     <div class="card-title"><span class="step-badge">1</span> Configuration</div>
     <div class="grid-2" style="margin-bottom:14px;">
       <div>
-        <label>Keepa API Key <span style="color:var(--danger)">*</span></label>
-        <input type="password" id="apiKey" placeholder="Paste your Keepa API key…" />
-        <p class="hint">Get a free key at <a href="https://keepa.com/#!api" target="_blank">keepa.com/#!api</a> &mdash; free tier gives 100 tokens/minute</p>
+        <label>Rainforest API Key <span style="color:var(--danger)">*</span></label>
+        <input type="password" id="apiKey" placeholder="Paste your Rainforest API key…" />
+        <p class="hint">Get a free key at <a href="https://www.rainforestapi.com" target="_blank">rainforestapi.com</a> &mdash; free tier gives 200 requests/month</p>
       </div>
       <div>
         <label>EUR → GBP Exchange Rate</label>
@@ -500,7 +500,7 @@
 </div>
 
 <footer>
-  Amazon EU Arbitrage Finder &mdash; powered by <a href="https://keepa.com" target="_blank">Keepa API</a>.
+  Amazon EU Arbitrage Finder &mdash; powered by <a href="https://www.rainforestapi.com" target="_blank">Rainforest API</a>.
   Prices are informational only; always verify before purchasing.
 </footer>
 
@@ -731,24 +731,27 @@ function updateScanBtn() {
 }
 apiKeyEl.addEventListener('input', updateScanBtn);
 
-// ─── Keepa API call ──────────────────────────────────────────────────────────
-async function keepaFetch(asin, domainId, apiKey) {
-  const url = `https://api.keepa.com/product?key=${encodeURIComponent(apiKey)}&domain=${domainId}&asin=${encodeURIComponent(asin)}&stats=1&history=0&offers=20`;
+// ─── Rainforest API call ─────────────────────────────────────────────────────
+async function rainforestFetch(asin, amazonDomain, apiKey) {
+  const url = `https://api.rainforestapi.com/request?api_key=${encodeURIComponent(apiKey)}&type=product&asin=${encodeURIComponent(asin)}&amazon_domain=${encodeURIComponent(amazonDomain)}`;
   const resp = await fetch(url);
-  if (resp.status === 400) throw new Error('BAD_REQUEST');
-  if (resp.status === 402) throw new Error('TOKEN_LIMIT');
-  if (resp.status === 403) throw new Error('INVALID_KEY');
+  if (resp.status === 401) throw new Error('INVALID_KEY');
+  if (resp.status === 429) throw new Error('RATE_LIMIT');
+  if (resp.status === 402) throw new Error('CREDIT_LIMIT');
   if (!resp.ok) throw new Error(`HTTP_${resp.status}`);
   return resp.json();
 }
 
-function extractLowestNewPrice(product) {
-  // Check stats.current: index 0 = Amazon, 1 = marketplace new
-  if (!product?.stats?.current) return null;
-  const cur = product.stats.current;
-  const candidates = [cur[0], cur[1]].filter(v => v && v > 0);
-  if (!candidates.length) return null;
-  return Math.min(...candidates) / 100; // Keepa prices are in cents
+function extractPrice(data) {
+  const p = data?.product;
+  if (!p) return null;
+  // Prefer buybox winner price, fall back to listed price
+  const val = p.buybox_winner?.price?.value ?? p.price?.value ?? null;
+  return (val && val > 0) ? val : null;
+}
+
+function extractCredits(data) {
+  return data?.request_info?.credits_remaining ?? null;
 }
 
 // ─── Scanning ────────────────────────────────────────────────────────────────
@@ -765,7 +768,7 @@ async function runScan() {
   const colName  = $('colName').value;
   const colPrice = $('colPrice').value;
 
-  if (!apiKey) { showBanner('scanErr','Please enter your Keepa API key.'); return; }
+  if (!apiKey) { showBanner('scanErr','Please enter your Rainforest API key.'); return; }
   if (!csvRows.length) { showBanner('scanErr','No CSV data loaded.'); return; }
   if (!activeMarkets.size) { showBanner('scanErr','Select at least one marketplace.'); return; }
 
@@ -784,7 +787,7 @@ async function runScan() {
   const markets = [...activeMarkets];
   const total   = csvRows.length * markets.length;
   let   done    = 0;
-  let   tokensLeft = null;
+  let   creditsLeft = null;
 
   for (const row of csvRows) {
     if (stopRequested) break;
@@ -820,59 +823,45 @@ async function runScan() {
       let entry = { asin, name, costGBP, market: mCode, amazonEUR: null, amazonGBP: null, netProfit: null, roi: null, error: null };
 
       try {
-        const data = await keepaFetch(asin, mInfo.id, apiKey);
+        const data = await rainforestFetch(asin, mInfo.domain, apiKey);
 
-        if (data.tokensLeft !== undefined) {
-          tokensLeft = data.tokensLeft;
-          if (tokensLeft < 5) {
-            showBanner('tokenWarn', `⚠ Only ${tokensLeft} Keepa tokens remaining. Scan paused 60s to refill.`);
-            await sleep(60000);
-            hideBanner('tokenWarn');
+        const credits = extractCredits(data);
+        if (credits !== null) {
+          creditsLeft = credits;
+          if (creditsLeft < 2) {
+            showBanner('tokenWarn', `⚠ Only ${creditsLeft} Rainforest credits remaining for this month.`);
           }
         }
 
-        if (!data.products?.length) {
-          entry.error = 'Not found';
+        const priceEUR = extractPrice(data);
+        if (priceEUR === null) {
+          entry.error = data?.product ? 'No price available' : 'Not found';
         } else {
-          const priceEUR = extractLowestNewPrice(data.products[0]);
-          if (priceEUR === null || priceEUR <= 0) {
-            entry.error = 'No price available';
-          } else {
-            entry.amazonEUR = priceEUR;
-            // Convert to GBP
-            const priceGBP = priceEUR * eurGbp;
-            // Apply Amazon fees
-            const netSell  = priceGBP * (1 - feesPct);
-            const profit   = netSell - costGBP;
-            const roi      = costGBP > 0 ? (profit / costGBP) * 100 : 0;
-            entry.amazonGBP  = priceGBP;
-            entry.netProfit  = profit;
-            entry.roi        = roi;
-          }
+          entry.amazonEUR = priceEUR;
+          const priceGBP = priceEUR * eurGbp;
+          const netSell  = priceGBP * (1 - feesPct);
+          const profit   = netSell - costGBP;
+          const roi      = costGBP > 0 ? (profit / costGBP) * 100 : 0;
+          entry.amazonGBP = priceGBP;
+          entry.netProfit = profit;
+          entry.roi       = roi;
         }
       } catch(err) {
         if (err.message === 'INVALID_KEY') {
-          showBanner('scanErr', '❌ Invalid Keepa API key. Please check and try again.');
+          showBanner('scanErr', '❌ Invalid Rainforest API key. Please check and try again.');
           stopRequested = true;
           break;
         }
-        if (err.message === 'TOKEN_LIMIT') {
-          showBanner('tokenWarn', '⚠ Token limit reached. Waiting 60s…');
-          await sleep(60000);
+        if (err.message === 'CREDIT_LIMIT') {
+          showBanner('tokenWarn', '⚠ Monthly credit limit reached. Upgrade your Rainforest plan to continue.');
+          stopRequested = true;
+          break;
+        }
+        if (err.message === 'RATE_LIMIT') {
+          showBanner('tokenWarn', '⚠ Rate limited — pausing 10s…');
+          await sleep(10000);
           hideBanner('tokenWarn');
-          // Retry once
-          try {
-            const data2 = await keepaFetch(asin, mInfo.id, apiKey);
-            const priceEUR = data2.products?.length ? extractLowestNewPrice(data2.products[0]) : null;
-            if (priceEUR) {
-              const priceGBP = priceEUR * eurGbp;
-              const netSell  = priceGBP * (1 - feesPct);
-              const profit   = netSell - costGBP;
-              const roi      = costGBP > 0 ? (profit / costGBP) * 100 : 0;
-              entry.amazonEUR = priceEUR; entry.amazonGBP = priceGBP;
-              entry.netProfit = profit;   entry.roi = roi;
-            } else { entry.error = 'No price after retry'; }
-          } catch { entry.error = 'Token limit — skipped'; }
+          entry.error = 'Rate limited — skipped';
         } else {
           entry.error = err.message;
         }
@@ -880,10 +869,10 @@ async function runScan() {
 
       results.push(entry);
       done++;
-      updateProgress(done, total, tokensLeft !== null ? `Keepa tokens left: ${tokensLeft}` : '');
+      updateProgress(done, total, creditsLeft !== null ? `Rainforest credits left: ${creditsLeft}` : '');
 
-      // Polite delay to avoid hammering the API
-      await sleep(300);
+      // Polite delay between requests
+      await sleep(500);
     }
   }
 
